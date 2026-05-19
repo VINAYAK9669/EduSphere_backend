@@ -1,38 +1,27 @@
-import { Request, Response, NextFunction } from 'express';
-import jwt, { TokenExpiredError } from 'jsonwebtoken';
-import { AuthUser, UserRole } from '../types';
+import { Request, Response, NextFunction } from "express";
+import { fromNodeHeaders } from "better-auth/node";
+import { auth } from "../lib/auth";
+import { UserRole } from "../types";
 
-interface JwtPayload {
-  sub: string;
-  email: string;
-  role: UserRole;
-  institutionId?: string;
-}
+export async function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const token = req.cookies?.access_token as string | undefined;
-
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'No token provided' });
+  if (!session) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
-  try {
-    const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!) as JwtPayload;
-    req.user = {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      institutionId: payload.institutionId,
-    } satisfies AuthUser;
-    next();
-  } catch (err) {
-    if (err instanceof TokenExpiredError) {
-      return res.status(401).json({
-        success: false,
-        error: 'Token expired',
-        code: 'TOKEN_EXPIRED',
-      });
-    }
-    return res.status(401).json({ success: false, error: 'Invalid token' });
-  }
+  req.user = {
+    id: session.user.id,
+    email: session.user.email,
+    role: ((session.user as Record<string, unknown>).role as UserRole) ?? "student",
+    institutionId: (session.user as Record<string, unknown>).institutionId as string | undefined,
+  };
+
+  next();
 }
