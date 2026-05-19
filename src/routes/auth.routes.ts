@@ -1,23 +1,13 @@
 import { Router } from "express";
+import { toNodeHandler } from "better-auth/node";
 import { arcjetMiddleware } from "../middleware/arcjet.middleware";
-import { authMiddleware } from "../middleware/auth.middleware";
 import { authLimiter } from "../middleware/rate-limit.middleware";
-import {
-  register,
-  login,
-  refresh,
-  logout,
-  logoutAll,
-  me,
-} from "../controllers/auth.controller";
+import { auth } from "../lib/auth";
 
 const router = Router();
 
-router.post("/register", arcjetMiddleware, authLimiter, register);
-router.post("/login",    arcjetMiddleware, authLimiter, login);
-router.post("/refresh",  arcjetMiddleware, authLimiter, refresh);
-router.post("/logout",                                  logout);
-router.post("/logout-all", authMiddleware,              logoutAll);
-router.get("/me",          authMiddleware,              me);
+// All Better Auth endpoints (/sign-in, /sign-up, /sign-out, /session, etc.)
+// are handled here. The frontend calls these via the Better Auth client SDK.
+router.all("/*", arcjetMiddleware, authLimiter, toNodeHandler(auth));
 
 export default router;
