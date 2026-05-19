@@ -2,9 +2,10 @@
 
 > Repo: `edusphere-backend` · Deployed on: Railway (Node service)
 > Part of a 3-service architecture:
->   - edusphere-frontend  (Next.js 14)        → UI layer
->   - edusphere-backend   (Node.js + Express)  → this repo
->   - edusphere-ai        (FastAPI + Python)   → AI microservice
+>
+> - edusphere-frontend (Next.js 14) → UI layer
+> - edusphere-backend (Node.js + Express) → this repo
+> - edusphere-ai (FastAPI + Python) → AI microservice
 
 ---
 
@@ -117,6 +118,7 @@ Frontend
 ```
 
 The backend is a trusted proxy. It:
+
 1. Validates the request (auth + role + Zod)
 2. Checks business rules (is student enrolled in this class?)
 3. Enriches the request (adds `class_id`, `student_id`, `r2_key` from DB)
@@ -135,13 +137,13 @@ const AI_URL = process.env.AI_SERVICE_URL; // e.g. http://edusphere-ai.railway.i
 
 export async function proxyToAI(
   path: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): Promise<Response> {
   const res = await fetch(`${AI_URL}${path}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Internal-Secret': process.env.AI_INTERNAL_SECRET!, // shared secret — AI validates this
+      "Content-Type": "application/json",
+      "X-Internal-Secret": process.env.AI_INTERNAL_SECRET!, // shared secret — AI validates this
     },
     body: JSON.stringify(payload),
   });
@@ -150,25 +152,35 @@ export async function proxyToAI(
 }
 
 // In controller — pipe the stream directly back to client
-export const chatQuery = async (req: Request, res: Response, next: NextFunction) => {
+export const chatQuery = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     // 1. Auth + enrollment check already done by middleware
     const { question, noteId } = req.body;
     const note = await getNoteMetadata(noteId); // fetch r2_key, class_id from DB
 
     // 2. Forward to AI service
-    const aiRes = await proxyToAI('/rag/query', {
+    const aiRes = await proxyToAI("/rag/query", {
       question,
       class_id: note.classId,
       note_id: noteId,
     });
 
     // 3. Stream response back
-    res.setHeader('Content-Type', 'text/event-stream');
-    aiRes.body!.pipeTo(new WritableStream({
-      write(chunk) { res.write(chunk); },
-      close() { res.end(); },
-    }));
+    res.setHeader("Content-Type", "text/event-stream");
+    aiRes.body!.pipeTo(
+      new WritableStream({
+        write(chunk) {
+          res.write(chunk);
+        },
+        close() {
+          res.end();
+        },
+      }),
+    );
   } catch (err) {
     next(err);
   }
@@ -181,12 +193,12 @@ export const chatQuery = async (req: Request, res: Response, next: NextFunction)
 
 ```typescript
 router.post(
-  '/ai/chat/query',
-  arcjetMiddleware,             // 1. Rate limit (10/min for AI routes)
-  authMiddleware,               // 2. Verify session → req.user
-  requireRole('student'),       // 3. Role check
-  validate(chatQuerySchema),    // 4. Zod body validation
-  aiController.chatQuery        // 5. Business rules + proxy to AI
+  "/ai/chat/query",
+  arcjetMiddleware, // 1. Rate limit (10/min for AI routes)
+  authMiddleware, // 2. Verify session → req.user
+  requireRole("student"), // 3. Role check
+  validate(chatQuerySchema), // 4. Zod body validation
+  aiController.chatQuery, // 5. Business rules + proxy to AI
 );
 ```
 
@@ -197,6 +209,7 @@ Never skip any layer. Never inline auth in a controller.
 ## Database Rules
 
 ### PostgreSQL (Drizzle)
+
 Relational structured data: users, institutions, subjects, classes, sessions, enrollments, competencies, assessment_responses, notes_metadata.
 
 - Schema changes → `npm run db:generate` → `npm run db:migrate`. Never edit `drizzle/` files by hand.
@@ -204,6 +217,7 @@ Relational structured data: users, institutions, subjects, classes, sessions, en
 - Drizzle client singleton from `src/db/postgres/client.ts` only.
 
 ### MongoDB (Mongoose)
+
 Flexible document data: quizzes, attempts, chat_histories, reflection_reports.
 
 - Explicit indexes on all query fields: `class_id`, `student_id`, `created_at`.
@@ -212,16 +226,16 @@ Flexible document data: quizzes, attempts, chat_histories, reflection_reports.
 
 ### What goes where
 
-| Data | Database | Reason |
-|---|---|---|
-| Users, roles, institutions | PostgreSQL | Relational, FK constraints needed |
-| Classes, sessions, enrollments | PostgreSQL | Relational |
-| Competencies, assessment scores | PostgreSQL | Structured scoring data |
-| Notes metadata (r2_key, status) | PostgreSQL | Relational to class |
-| Quizzes + questions | MongoDB | Flexible question types |
-| Quiz attempts + answers | MongoDB | Variable answer shapes |
-| Chat histories | MongoDB | Append-heavy, no joins needed |
-| AI reflection reports | MongoDB | Long text, no relations |
+| Data                            | Database   | Reason                            |
+| ------------------------------- | ---------- | --------------------------------- |
+| Users, roles, institutions      | PostgreSQL | Relational, FK constraints needed |
+| Classes, sessions, enrollments  | PostgreSQL | Relational                        |
+| Competencies, assessment scores | PostgreSQL | Structured scoring data           |
+| Notes metadata (r2_key, status) | PostgreSQL | Relational to class               |
+| Quizzes + questions             | MongoDB    | Flexible question types           |
+| Quiz attempts + answers         | MongoDB    | Variable answer shapes            |
+| Chat histories                  | MongoDB    | Append-heavy, no joins needed     |
+| AI reflection reports           | MongoDB    | Long text, no relations           |
 
 ---
 
@@ -247,11 +261,11 @@ Never expose stack traces in error responses.
 
 ## ArcJet Rate Limits
 
-| Route group | Limit |
-|---|---|
-| `/auth/*` | 20 req/min per IP |
-| `/ai/*` | 10 req/min per IP |
-| All others | 60 req/min per IP |
+| Route group | Limit             |
+| ----------- | ----------------- |
+| `/auth/*`   | 20 req/min per IP |
+| `/ai/*`     | 10 req/min per IP |
+| All others  | 60 req/min per IP |
 
 Bot protection: `LIVE` in production, `DRY_RUN` in development.
 ArcJet config in `src/middleware/arcjet.middleware.ts` only — never inline in routes.
@@ -261,11 +275,13 @@ ArcJet config in `src/middleware/arcjet.middleware.ts` only — never inline in 
 ## CORS
 
 ```typescript
-app.use(cors({
-  origin: process.env.FRONTEND_URL,
-  credentials: true,              // required — session cookies
-  methods: ['GET','POST','PUT','PATCH','DELETE'],
-}));
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true, // required — session cookies
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  }),
+);
 ```
 
 Never `origin: '*'` — breaks session cookies.
@@ -292,11 +308,9 @@ AI_SERVICE_URL=http://localhost:8000          # edusphere-ai
 AI_INTERNAL_SECRET=                           # shared secret for service-to-service auth
 
 # Storage
-CLOUDFLARE_R2_ACCOUNT_ID=
-CLOUDFLARE_R2_ACCESS_KEY_ID=
-CLOUDFLARE_R2_SECRET_ACCESS_KEY=
-CLOUDFLARE_R2_BUCKET_NAME=edusphere-notes
-CLOUDFLARE_R2_PUBLIC_URL=
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
 
 # Security
 ARCJET_KEY=
@@ -326,7 +340,7 @@ npm run test
 
 ```typescript
 async function main() {
-  await connectMongo();      // 1. MongoDB
+  await connectMongo(); // 1. MongoDB
   // PostgreSQL connects lazily on first query — no explicit call needed
   app.listen(PORT, () => logger.info(`Backend on port ${PORT}`));
 }
@@ -365,6 +379,7 @@ Run `npm run type-check` before committing.
 ## Session Context Hint
 
 When compacting, preserve:
+
 1. Route/controller currently in progress
 2. Last Drizzle migration file name
 3. Any schema or model recently modified
